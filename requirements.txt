@@ -54,7 +54,6 @@ marshmallow==3.20.1
 multidict==6.0.4
 murmurhash==1.0.9
 mypy-extensions==1.0.0
-mysqlclient
 nltk==3.8.1
 numexpr==2.8.5
 numpy==1.25.2
