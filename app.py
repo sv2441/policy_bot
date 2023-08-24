@@ -58,6 +58,22 @@ def process_csv(df):
     st.dataframe(df)
     df.to_csv('process_result.csv')
 
+def split_into_paragraphs(text, max_statements=7):
+        sentences = text.split('. ')
+        paragraphs = []
+        current_paragraph = ""
+    
+        for sentence in sentences:
+            if len(current_paragraph.split('. ')) >= max_statements:
+                paragraphs.append(current_paragraph)
+                current_paragraph = ""
+            current_paragraph += sentence + '. '
+        
+        if current_paragraph:
+            paragraphs.append(current_paragraph)
+        
+        return paragraphs
+
 # Function to process the policy generation
 def policy_generator(df):
     Policy_schema = ResponseSchema(name="Policy", description="Policy Statement")
@@ -103,7 +119,7 @@ def summary_generator(df):
     for index, row in new_df.iterrows():
         topic = row['Policies']
         word_count_topic = len(topic.split())
-        count = math.ceil(0.2 * word_count_topic) 
+        count = math.ceil(0.3 * word_count_topic) 
         
         messages = prompt.format_messages(topic=topic, count=count, format_instructions=format_instructions)
         response = chat_llm(messages)
@@ -116,36 +132,61 @@ def summary_generator(df):
     final.to_csv("summary_result.csv")
     st.dataframe(final)
 
-# Function to process the Document generation
+def paragaraph_generator(df):
+    result_data = {'Paragraph': []}
+
+    for summary in df:
+        paragraphs = split_into_paragraphs(summary)
+        result_data['Paragraph'].extend(paragraphs)
+
+    result_df = pd.DataFrame(result_data)
+
+    result_df.to_csv('paragraph.csv', index=False)
+    st.dataframe(result_df)
+
 def document_generator(df):
-    contents = combine_column_to_paragraph(df, 'Summary')
-    
-    # title_template = """ \ You are an AI Governance bot.  
-    #                 Restructure {topic} based on topic into a policy document.          
-    #             """ 
-    title_template = """ \ You are an AI Governance bot.  
-                    Restructure and Summarize the {topic} based on topic into a policy document for Government policymakers.         
+    paragaraph_generator(df)
+    df=pd.read_csv("paragraph.csv")
+    title_template = """Combine the "{topic}" into paragraph.    
                 """ 
-    
     prompt = ChatPromptTemplate.from_template(template=title_template)
-    
-    if os.path.exists('Policy_Document.doc'):
-        doc = docx.Document('Policy_Document.doc')
+    if os.path.exists('Policy_Document.docx'):
+        doc = docx.Document('Policy_Document.docx')
     else:
         doc = docx.Document()
+        
+    for i in range(len(df)):
+        messages = prompt.format_messages(topic=df.iloc[i])
+        response = chat_llm(messages)
+        content = str(response.content)
+        doc.add_paragraph(content)
+    doc.save('Policy_Document.docx') 
     
-    messages = prompt.format_messages(topic=contents)
+def Download(docx_path):
+    doc = docx.Document(docx_path)
+
+# Create a variable to store the content
+    doc_content = ""
+
+    # Iterate through paragraphs and add their text to the variable
+    for paragraph in doc.paragraphs:
+        doc_content += paragraph.text + "\n"
+        
+    title_template = """summarize the "{topic}" in 3 to 4 paragarphs.    
+                """ 
+    prompt = ChatPromptTemplate.from_template(template=title_template)
+    if os.path.exists('Policy.docx'):
+        doc = docx.Document('Policy.docx')
+    else:
+        doc = docx.Document()
+
+    messages = prompt.format_messages(topic=doc_content)
     response = chat_llm(messages)
     content = str(response.content)
     doc.add_paragraph(content)
-    doc.save('Policy_Document.doc')
-
-    with open('Policy_Document.doc', 'rb') as f:
-        doc_data = f.read()
-    b64 = base64.b64encode(doc_data).decode()
-    href = f'<a href="data:application/octet-stream;base64,{b64}" download="result.doc">Download Result</a>'
-    st.markdown(href, unsafe_allow_html=True)
-
+    doc.save('Policy.docx')
+    
+    
 # Streamlit app
 def main():
     st.title("Policy Prodago")
@@ -171,7 +212,11 @@ def main():
             summary_generator(pd.read_csv('policy_result.csv', usecols=['Policy', 'L1 topic']))
             
         if st.button("Policy Document Generation"):
-            document_generator(pd.read_csv("summary_result.csv"))
+            document_generator(pd.read_csv("summary_result.csv",usecols=['Summary']))
+            
+        if st.button("Download"):
+            Download(docx_path = 'Policy_Document.docx')
+        
 
 if __name__ == "__main__":
     main()
